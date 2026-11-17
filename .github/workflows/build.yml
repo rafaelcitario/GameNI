@@ -1,0 +1,120 @@
+name: Build APK
+
+# Compila o jogo em um APK Android a cada push, pull request, tag "v*" ou manualmente (aba Actions > Build APK > Run workflow).
+# O APK fica na página da execução, em "Artifacts". Com uma tag (ex.: git tag v1.0.0 && git push --tags) ele também vai para a aba Releases.
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # só é usado para anexar os APKs a uma Release (tags v*)
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_NAME: infosfera
+
+jobs:
+  test:
+    name: Testes (lógica e geradores de perguntas)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Sintaxe de todos os scripts
+        run: |
+          for f in game/js/*.js game/js/phases/*.js tools/*.js; do node --check "$f"; done
+
+      - name: Testes da lógica (bases, entropia, Huffman, Hamming, portas...)
+        run: node tools/test-logic.js
+
+      - name: Testes dos geradores de perguntas
+        run: node tools/test-gen.js
+
+  apk:
+    name: Compilar APK
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Definir versão do app
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then NAME="${GITHUB_REF_NAME#v}"; else NAME="1.0.${GITHUB_RUN_NUMBER}"; fi
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "Versão: ${NAME} (code ${GITHUB_RUN_NUMBER})"
+
+      - name: Usar a sua chave de assinatura (somente se os secrets existirem)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "${KS_B64}" ]; then
+            echo "${KS_B64}" | base64 -d > "${RUNNER_TEMP}/release.jks"
+            {
+              echo "NI_KEYSTORE_FILE=${RUNNER_TEMP}/release.jks"
+              echo "NI_KEYSTORE_PASSWORD=${KS_PASS}"
+              echo "NI_KEY_ALIAS=${KS_ALIAS}"
+              echo "NI_KEY_PASSWORD=${KEY_PASS:-${KS_PASS}}"
+            } >> "$GITHUB_ENV"
+            echo "Assinando com a chave dos secrets."
+          else
+            echo "Sem secrets de assinatura: usando a chave de EXEMPLO (app/keystore/ni-sample.jks)."
+          fi
+
+      - name: Compilar (debug + release)
+        run: >
+          gradle --no-daemon --stacktrace assembleDebug assembleRelease
+          -PversionCode=${{ github.run_number }}
+          -PversionName=${{ steps.ver.outputs.name }}
+
+      - name: Reunir os APKs
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/${APP_NAME}-${{ steps.ver.outputs.name }}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/${APP_NAME}-${{ steps.ver.outputs.name }}-debug.apk"
+          ls -la dist
+
+      - name: Conferir o conteúdo do APK
+        run: |
+          APK="dist/${APP_NAME}-${{ steps.ver.outputs.name }}.apk"
+          unzip -l "${APK}" | grep -E "assets/(index\.html|js/main\.js|js/phases/neural\.js|css/style\.css)" || { echo "::error::arquivos do jogo não encontrados no APK"; exit 1; }
+          SIGNER="$(find "${ANDROID_HOME}/build-tools" -name apksigner 2>/dev/null | sort | tail -1)"
+          if [ -n "${SIGNER}" ]; then "${SIGNER}" verify --print-certs "${APK}" | head -5; else echo "apksigner não encontrado (pulando a verificação da assinatura)"; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: infosfera-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - name: Publicar na aba Releases (somente tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          generate_release_notes: true
