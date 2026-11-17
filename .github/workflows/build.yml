@@ -53,7 +53,18 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      # O runner do GitHub já traz o Android SDK (ANDROID_HOME). Aqui só aceitamos as licenças e garantimos a plataforma 34
+      # (a action android-actions/setup-android@v3 falhava ao pedir o pacote "tools", que não existe mais).
+      - name: Preparar o Android SDK
+        run: |
+          SDKM="$(ls -d "${ANDROID_HOME}"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | tail -1)"
+          if [ -n "${SDKM}" ]; then
+            yes | "${SDKM}" --licenses > /dev/null || true
+            "${SDKM}" "platforms;android-34" "build-tools;34.0.0" || echo "Não foi possível instalar agora; o Gradle tenta baixar o que faltar."
+          else
+            echo "sdkmanager não encontrado; seguindo com o SDK que já está no runner."
+          fi
+          ls "${ANDROID_HOME}/platforms" "${ANDROID_HOME}/build-tools" || true
 
       - uses: gradle/actions/setup-gradle@v4
         with:
