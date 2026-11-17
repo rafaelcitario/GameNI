@@ -1,0 +1,11 @@
+CHAVE DE ASSINATURA DE EXEMPLO (PÚBLICA)
+=========================================
+ni-sample.jks existe só para o workflow conseguir gerar um APK "release" instalável sem nenhuma configuração.
+A senha ("naturezainfo") está em app/build.gradle e neste repositório: qualquer pessoa pode assinar um APK com ela.
+Use-a apenas para testes. Para publicar de verdade (Play Store etc.), crie a sua chave e guarde-a em segredo:
+
+  keytool -genkeypair -v -keystore minha-chave.jks -alias minha -keyalg RSA -keysize 2048 -validity 10000
+  base64 -w0 minha-chave.jks        # cole o resultado no secret ANDROID_KEYSTORE_BASE64
+
+Secrets lidos pelo workflow (Settings > Secrets and variables > Actions):
+  ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD

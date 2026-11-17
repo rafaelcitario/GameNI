@@ -1,0 +1,61 @@
+plugins {
+    id 'com.android.application'
+}
+
+/* O jogo (HTML5) vive em ../game e é empacotado como "assets" do APK.
+   Nenhuma biblioteca externa é usada: o app é só uma Activity com WebView (zero dependências). */
+
+// Assinatura: por padrão usa a chave de EXEMPLO (pública) em app/keystore. Para uma chave sua, defina as variáveis
+// NI_KEYSTORE_FILE / NI_KEYSTORE_PASSWORD / NI_KEY_ALIAS / NI_KEY_PASSWORD (o workflow faz isso a partir de "secrets").
+def env = { String k, String d -> System.getenv(k) ?: d }
+def vCode = (project.findProperty('versionCode') ?: '1').toString().toInteger()
+def vName = (project.findProperty('versionName') ?: '1.0.0').toString()
+
+android {
+    namespace 'br.ufabc.bct.natureza'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'br.ufabc.bct.natureza'
+        minSdk 21
+        targetSdk 34
+        versionCode vCode
+        versionName vName
+    }
+
+    signingConfigs {
+        release {
+            storeFile file(env('NI_KEYSTORE_FILE', 'keystore/ni-sample.jks'))
+            storePassword env('NI_KEYSTORE_PASSWORD', 'naturezainfo')
+            keyAlias env('NI_KEY_ALIAS', 'ni')
+            keyPassword env('NI_KEY_PASSWORD', 'naturezainfo')
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+        }
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs = ['../game']
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}

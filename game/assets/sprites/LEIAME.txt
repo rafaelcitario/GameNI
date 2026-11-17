@@ -1,0 +1,4 @@
+Pasta opcional para sprites em PNG.
+Coloque aqui um arquivo NOME.png (fundo transparente, mesmo tamanho em pixels do sprite original) e o jogo passa a usá-lo no lugar
+do sprite desenhado em código. Lista de nomes e tamanhos: ver ASSETS.md na raiz do projeto.
+Arquivos que não existem são ignorados em silêncio.
